@@ -44,7 +44,7 @@ parser.add_argument('--max_new_tokens', type=int, help='The maximum numbers of t
 parser.add_argument('--ckpt_step', type=str, help='The training step of sft model.', default="600")
 parser.add_argument('--beta', type=float, help='beta.', default=0.1)
 parser.add_argument('--eval_mode', type=str, help='Whether only to eval.', default="false")
-parser.add_argument('--train_run_name', type=str, help='Name of the W&B run.', default="train_run_name")
+parser.add_argument('--train_run_name', type=str, help='Name of the train run.', default="train_run_name")
 
 args = parser.parse_args()
 
@@ -143,7 +143,7 @@ if args.eval_mode == "false":
     data_dir = data_dir.split("/")[1]
     train_data_name = args.train_dataset_name.split(".jsonl")[0]
 
-    run_name = "DPO_" + str(args.ckpt_step) +"_"+ str(args.beta) +"_" + data_dir + "_" + train_data_name + "_"+ args.llm_name + "-" 
+    run_name = "DPO_" + str(args.ckpt_step) +"_"+ str(args.beta) +"_" + data_dir + "_" + train_data_name + "_"+ args.llm_name
     train_run_name = f"{run_name}-{datetime.now().strftime('%Y-%m-%d')}"
 
     dpo_trainer = DPOTrainer(

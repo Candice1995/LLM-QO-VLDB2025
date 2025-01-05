@@ -30,8 +30,7 @@ parser.add_argument('--max_new_tokens', type=int, help='The maximum numbers of t
 parser.add_argument('--predict_dir', type=str, help='Name of the predict directory.', default="predicts_dsb")
 parser.add_argument('--output_dir', type=str, help='Name of the output directory.', default="outputs_dsb")
 parser.add_argument('--eval_mode', type=str, help='Whether only to eval.', default="false")
-parser.add_argument('--ckpt_dir', type=str, help='The checkpint directory.', default="ckpt_dir")
-
+parser.add_argument('--train_run_name', type=str, help='Name of the train run.', default="train_run_name")
 
 args = parser.parse_args()
 
@@ -40,58 +39,6 @@ print(is_bfloat16_supported)
 max_seq_length = 2048 # Choose any! We auto support RoPE Scaling internally!
 dtype = None # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
 load_in_4bit = True # Use 4bit quantization to reduce memory usage. Can be False.
-
-#Load base model: llama3-8b
-# 4bit pre quantized models we support for 4x faster downloading + no OOMs.
-fourbit_models = [
-    "unsloth/mistral-7b-v0.3-bnb-4bit",      # New Mistral v3 2x faster!
-    "unsloth/mistral-7b-instruct-v0.3-bnb-4bit",
-    "unsloth/llama-3-8b-bnb-4bit",           # Llama-3 15 trillion tokens model 2x faster!
-    "unsloth/llama-3-8b-Instruct-bnb-4bit",
-    "unsloth/llama-3-70b-bnb-4bit",
-    "unsloth/Phi-3-mini-4k-instruct",        # Phi-3 2x faster!
-    "unsloth/Phi-3-medium-4k-instruct",
-    "unsloth/mistral-7b-bnb-4bit",
-    "unsloth/gemma-7b-bnb-4bit",             # Gemma 2.2x faster!
-    #unsloth/llama-2-7b-bnb-4bit
-    #unsloth/codellama-7b-bnb-4bit
-] # More models at https://huggingface.co/unsloth
-
-if args.llm_name == "llama3-8b":
-    llm_name = "unsloth/llama-3-8b-bnb-4bit"
-elif args.llm_name == "llama2-7b":
-    llm_name = "unsloth/llama-2-7b-bnb-4bit"
-elif args.llm_name == "codellama-7b":
-    llm_name = "unsloth/codellama-7b-bnb-4bit"
-elif args.llm_name == "mistral-7b":
-    llm_name = "unsloth/mistral-7b-v0.3-bnb-4bit"
-else:
-    print("Error model name!")
-
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name = llm_name,
-    max_seq_length = max_seq_length,
-    dtype = dtype,
-    load_in_4bit = load_in_4bit,
-    # token = "hf_...", # use one if using gated models like meta-llama/Llama-2-7b-hf
-)
-
-
-model = FastLanguageModel.get_peft_model(
-    model,
-    r = 16, # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
-    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
-                      "gate_proj", "up_proj", "down_proj",],
-    lora_alpha = 16,
-    lora_dropout = 0, # Supports any, but = 0 is optimized
-    bias = "none",    # Supports any, but = "none" is optimized
-    # [NEW] "unsloth" uses 30% less VRAM, fits 2x larger batch sizes!
-    use_gradient_checkpointing = "unsloth", # True or "unsloth" for very long context
-    random_state = 3407,
-    use_rslora = False,  # We support rank stabilized LoRA
-    loftq_config = None, # And LoftQ
-)
-
 
 
 alpaca_prompt = """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
@@ -105,39 +52,92 @@ alpaca_prompt = """Below is an instruction that describes a task, paired with an
 ### Response:
 {}"""
 
-EOS_TOKEN = tokenizer.eos_token # Must add EOS_TOKEN
-def formatting_prompts_func(examples):
-    instructions = examples["instruction"]
-    inputs       = examples["input"]
-    outputs      = examples["output"]
-    texts = []
-    for instruction, input, output in zip(instructions, inputs, outputs):
-        # Must add EOS_TOKEN, otherwise your generation will go on forever!
-        text = alpaca_prompt.format(instruction, input, output) + EOS_TOKEN
-        texts.append(text)
-    return { "text" : texts, }
-pass
-
-
-dataset = load_dataset(args.dataset_dir, data_files={"train": args.train_dataset_name, "valid": args.valid_dataset_name})
-
-dataset = dataset.map(formatting_prompts_func, batched = True,)
-
-#shuffle the dataset
-shuffled_train_dataset = dataset["train"].shuffle(seed=42)  # You can set a seed for reproducibility
-
-dataset["train"] = shuffled_train_dataset
-
-train_dataset = dataset["train"]
-eval_dataset = dataset["valid"]
 
 if args.eval_mode == "false":
+    #Load base model: llama3-8b
+    # 4bit pre quantized models we support for 4x faster downloading + no OOMs.
+    fourbit_models = [
+        "unsloth/mistral-7b-v0.3-bnb-4bit",      # New Mistral v3 2x faster!
+        "unsloth/mistral-7b-instruct-v0.3-bnb-4bit",
+        "unsloth/llama-3-8b-bnb-4bit",           # Llama-3 15 trillion tokens model 2x faster!
+        "unsloth/llama-3-8b-Instruct-bnb-4bit",
+        "unsloth/llama-3-70b-bnb-4bit",
+        "unsloth/Phi-3-mini-4k-instruct",        # Phi-3 2x faster!
+        "unsloth/Phi-3-medium-4k-instruct",
+        "unsloth/mistral-7b-bnb-4bit",
+        "unsloth/gemma-7b-bnb-4bit",             # Gemma 2.2x faster!
+        #unsloth/llama-2-7b-bnb-4bit
+        #unsloth/codellama-7b-bnb-4bit
+    ] # More models at https://huggingface.co/unsloth
+
+    if args.llm_name == "llama3-8b":
+        llm_name = "unsloth/llama-3-8b-bnb-4bit"
+    elif args.llm_name == "llama2-7b":
+        llm_name = "unsloth/llama-2-7b-bnb-4bit"
+    elif args.llm_name == "codellama-7b":
+        llm_name = "unsloth/codellama-7b-bnb-4bit"
+    elif args.llm_name == "mistral-7b":
+        llm_name = "unsloth/mistral-7b-v0.3-bnb-4bit"
+    else:
+        print("Error model name!")
+
+    model, tokenizer = FastLanguageModel.from_pretrained(
+        model_name = llm_name,
+        max_seq_length = max_seq_length,
+        dtype = dtype,
+        load_in_4bit = load_in_4bit,
+        # token = "hf_...", # use one if using gated models like meta-llama/Llama-2-7b-hf
+    )
+
+
+    model = FastLanguageModel.get_peft_model(
+        model,
+        r = 16, # Choose any number > 0 ! Suggested 8, 16, 32, 64, 128
+        target_modules = ["q_proj", "k_proj", "v_proj", "o_proj",
+                        "gate_proj", "up_proj", "down_proj",],
+        lora_alpha = 16,
+        lora_dropout = 0, # Supports any, but = 0 is optimized
+        bias = "none",    # Supports any, but = "none" is optimized
+        # [NEW] "unsloth" uses 30% less VRAM, fits 2x larger batch sizes!
+        use_gradient_checkpointing = "unsloth", # True or "unsloth" for very long context
+        random_state = 3407,
+        use_rslora = False,  # We support rank stabilized LoRA
+        loftq_config = None, # And LoftQ
+    )
+
+
+    EOS_TOKEN = tokenizer.eos_token # Must add EOS_TOKEN
+    def formatting_prompts_func(examples):
+        instructions = examples["instruction"]
+        inputs       = examples["input"]
+        outputs      = examples["output"]
+        texts = []
+        for instruction, input, output in zip(instructions, inputs, outputs):
+            # Must add EOS_TOKEN, otherwise your generation will go on forever!
+            text = alpaca_prompt.format(instruction, input, output) + EOS_TOKEN
+            texts.append(text)
+        return { "text" : texts, }
+    pass
+
+
+    dataset = load_dataset(args.dataset_dir, data_files={"train": args.train_dataset_name, "valid": args.valid_dataset_name})
+
+    dataset = dataset.map(formatting_prompts_func, batched = True,)
+
+    #shuffle the dataset
+    shuffled_train_dataset = dataset["train"].shuffle(seed=42)  # You can set a seed for reproducibility
+
+    dataset["train"] = shuffled_train_dataset
+
+    train_dataset = dataset["train"]
+    eval_dataset = dataset["valid"]
 
     data_dir = args.dataset_dir
     data_dir = data_dir.split("/")[1]
     train_data_name = args.train_dataset_name.split(".jsonl")[0]
 
-    train_run_name = "SFT_" + data_dir + "_" + train_data_name + "_"+ args.llm_name + "-"
+    run_name = "SFT_" + data_dir + "_" + train_data_name + "_"+ args.llm_name 
+    train_run_name = f"{run_name}-{datetime.now().strftime('%Y-%m-%d')}"
 
     trainer = SFTTrainer(
         model = model,
@@ -182,7 +182,7 @@ def extract_response(predict):
     response = predict.split("Response:\n", 1)[1]
     return response
 
-def evaluate_peft_model(model, sample,top_p=0,top_k=0,tmp=0):
+def evaluate_peft_model(model, sample, tokenizer):
     inputs = tokenizer(
     [   
         alpaca_prompt.format(
@@ -192,10 +192,7 @@ def evaluate_peft_model(model, sample,top_p=0,top_k=0,tmp=0):
         )
     ], return_tensors = "pt").to("cuda")
 
-    if top_p==0 and top_k == 0:
-        prediction = model.generate(**inputs, max_new_tokens = args.max_new_tokens, use_cache = True, pad_token_id=tokenizer.eos_token_id)
-    else:
-        prediction = model.generate(**inputs, max_new_tokens = args.max_new_tokens, use_cache = True, pad_token_id=tokenizer.eos_token_id, top_k=top_k, top_p = top_p,temperature=tmp)
+    prediction = model.generate(**inputs, max_new_tokens = args.max_new_tokens, use_cache = True, pad_token_id=tokenizer.eos_token_id)
 
     prediction = tokenizer.batch_decode(prediction, skip_special_tokens=True)
     prediction = extract_response(prediction[0])
@@ -231,7 +228,7 @@ for save_step in range(args.save_steps, args.max_steps + 1, args.save_steps):
         for sample in dataset[data_split]:
                         
             # break
-            input, p,l = evaluate_peft_model(model, sample)
+            input, p,l = evaluate_peft_model(model, sample, tokenizer)
             output.append({
             "input": input,
             "output": l,

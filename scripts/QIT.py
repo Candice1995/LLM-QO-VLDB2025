@@ -164,7 +164,6 @@ if args.eval_mode == "false":
             seed = 3407,
             data_seed= 3407,
             output_dir = f"{args.output_dir}/{train_run_name}",
-            report_to="None",
             evaluation_strategy="steps", # Evaluate the model every logging step
             eval_steps=50,               # Evaluate and save checkpoints every 50 steps
             do_eval=True,                # Perform evaluation at the end of training

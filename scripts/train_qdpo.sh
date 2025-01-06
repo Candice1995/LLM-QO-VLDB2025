@@ -10,7 +10,7 @@ CKPT_PATH=$1
 python QDPO.py \
     --dataset_dir ../data \
     --train_dataset_name "meta_final.dsb.dpo.train.one_shot_CoT.jsonl" \
-    --test_dataset_name "meta_final.dsb.mixed.valid.one_shot.CoT.jsonl" \
+    --test_dataset_name "meta_final.dsb.mixed.valid.one_shot_CoT.jsonl" \
     --valid_dataset_name "meta_final.dsb.dpo.valid.one_shot_CoT.jsonl" \
     --max_new_tokens 512 \
     --max_steps 200 \
